@@ -1,67 +1,63 @@
 pipeline {
-    agent any
-    
-    stages {
-        stage('Checkout') {
-            steps {
-                echo 'Obteniendo código fuente del repositorio...'
-                // En un escenario real, aquí harías:
-                // git checkout: scm
-                sh 'echo "Código fuente obtenido"'
-            }
-        }
-        
-        stage('Code Quality Analysis') {
-            steps {
-                echo 'Ejecutando análisis de calidad con SonarQube...'
-                script {
-                    // Configuración de SonarQube
-                    def scannerHome = tool 'SonarQubeScanner'
-                    withSonarQubeEnv('SonarQube') {
-                        sh "${scannerHome}/bin/sonar-scanner " +
-                           "-Dsonar.projectKey=teclado-app " +
-                           "-Dsonar.sources=. " +
-                           "-Dsonar.host.url=http://172.171.112.29:9000 " +
-                           "-Dsonar.login=admin " +
-                           "-Dsonar.password=admin"
-                    }
-                }
-            }
-        }
-        
-        stage('Build Application') {
-            steps {
-                echo 'Construyendo aplicación...'
-                sh 'echo "Aplicación construida exitosamente"'
-                // Aquí podrías agregar pasos de build si fuera necesario
-            }
-        }
-        
-        stage('Deploy to Nginx') {
-            steps {
-                echo 'Desplegando aplicación a Nginx...'
-                script {
-                    // Copiar archivos a la VM de Nginx
-                    sh 'echo "Copiando archivos a Nginx..."'
-                    sh 'echo "Reiniciando contenedor Nginx..."'
-                    sh 'echo "Verificando despliegue..."'
-                }
-            }
-        }
+  agent any
+
+  environment {
+    SONAR_HOST_URL = 'http://localhost:9000' 
+    SONAR_TOKEN = credentials('SONAR_TOKEN')      
+    DEPLOY_USER = credentials('nginx-deploy-user') 
+  }
+
+  stages {
+    stage('Checkout') {
+      steps {
+        checkout scm
+      }
     }
-    
-    post {
-        always {
-            echo 'Pipeline completado'
-            // Limpiar archivos temporales si es necesario
-        }
-        success {
-            echo '✅ Pipeline ejecutado exitosamente'
-            echo '🎉 Aplicación Teclado desplegada correctamente'
-        }
-        failure {
-            echo '❌ Pipeline falló'
-            // Aquí podrías enviar notificaciones de error
-        }
+
+    stage('SonarQube analysis') {
+      steps {
+        echo '🔍 Ejecutando análisis de SonarQube...'
+        sh '''
+          sonar-scanner \
+            -Dsonar.projectKey=teclado \
+            -Dsonar.projectName=Teclado \
+            -Dsonar.sources=. \
+            -Dsonar.host.url="${SONAR_HOST_URL}" \
+            -Dsonar.login="${SONAR_TOKEN}"
+        '''
+      }
     }
+
+    stage('Build') {
+      steps {
+        echo '🔧 Build (placeholder)'
+        sh 'echo \"Construyendo...\"'
+      }
+    }
+
+    stage('Deploy to nginx (via SSH)') {
+      steps {
+        echo '🚀 Desplegando en servidor Nginx remoto...'
+        script {
+          // Opción A: usar credencial SSH (recomendada)
+          // - Añade una credencial tipo \"SSH Username with private key\" en Jenkins (id: nginx-ssh)
+          // - Luego usa ssh-agent para ejecutar el scp/ssh seguros
+          sshagent (credentials: ['nginx-ssh']) {
+            sh '''
+              git archive --format=tar.gz -o teclado_site.tar.gz HEAD
+              scp -o StrictHostKeyChecking=no teclado_site.tar.gz adminuser@20.168.193.87:/tmp/teclado_site.tar.gz
+              ssh -o StrictHostKeyChecking=no adminuser@20.168.193.87 \\
+                "sudo rm -rf /var/www/html/* && sudo tar xzf /tmp/teclado_site.tar.gz -C /var/www/html && sudo chown -R www-data:www-data /var/www/html && sudo systemctl reload nginx"
+              rm -f teclado_site.tar.gz
+            '''
+          }
+        }
+      }
+    }
+  }
+
+  post {
+    success { echo '✅ Pipeline completed successfully.' }
+    failure { echo '❌ Pipeline failed.' }
+  }
 }
