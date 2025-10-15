@@ -27,6 +27,7 @@ pipeline {
         '''
       }
     }
+<<<<<<< HEAD
 
     stage('Build') {
       steps {
@@ -61,3 +62,7 @@ pipeline {
     failure { echo '❌ Pipeline failed.' }
   }
 }
+=======
+}
+
+>>>>>>> 04b985094e136763bfd253a700b464deb8081f8c
